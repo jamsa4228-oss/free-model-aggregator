@@ -38,8 +38,10 @@
 //   A gateway call answered with a 4xx or a 5xx is not an answer: the server
 //   retries a 5xx once on the same model, then fails over to the next free
 //   model that meets the prompt. A 429 goes straight to failover (retrying
-//   the same rate-limited model wastes a call), and a 401/403 gives up at
-//   once (no model answers without a key). Models refused in this trial are
+//   the same rate-limited model wastes a call), a 403 fails over too (it
+//   refuses one model, not the key — OpenRouter restricts some free models
+//   per account), and a 401 gives up at once (no model answers without a
+//   key). Models refused in this trial are
 //   cooled down: later prompts skip them unless no other candidate remains.
 //   Every refusal a retry or a failover recovered from is reported on the
 //   response in the `x-makefun-upstream-failures` header, the only way the
@@ -305,8 +307,8 @@ interface ServeResult {
 /**
  * Dial a prompt until one model serves it. The order is the rating order,
  * minus models this trial already refused (unless none remain). A 5xx is
- * retried once on the same model; a 429 goes straight to the next model; a
- * 401/403 gives up at once. At most MAX_ATTEMPTS_PER_PROMPT calls, inside
+ * retried once on the same model; a 429 or a 403 goes straight to the next
+ * model (a 403 refuses one model, not the key); a 401 gives up at once. At most MAX_ATTEMPTS_PER_PROMPT calls, inside
  * the client's 30 s. Returns null when no model served the prompt, with the
  * refusal trail the response header must report.
  */
@@ -337,7 +339,11 @@ async function serve(body: Json, requires: Requirement): Promise<ServeResult> {
       const text = await upstream.text().catch(() => '');
       failures.push({ status, code: errorCodeOf(text), model: model.id });
       refusedModels.add(model.id);
-      if (status === 401 || status === 403) break;
+      if (status === 401) break;
+      // A 403 refuses this model, not the key: OpenRouter restricts some
+      // free models per account (the key itself is proven by other calls
+      // succeeding), so fall through to the next candidate instead of
+      // giving up the prompt. Only a 401 — no key at all — ends the dial.
       if (status >= 500 && status < 600 && !retriedCurrent) {
         // One retry on the same model for a server error.
         retriedCurrent = true;
