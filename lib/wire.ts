@@ -329,8 +329,16 @@ export async function* sseFrames(
  * One SSE frame with every data payload's `model` set to the id the entry
  * dialled. Comments, `event:` lines and payloads that are not JSON objects
  * pass through untouched; `[DONE]` passes through untouched.
+ *
+ * When `finishState` is given, the frame is also put under the relay's
+ * one-finish rule: the gateway repeats `finish_reason` on its usage chunk
+ * (the chunk after the finish chunk carries the same stop reason), so a
+ * raw relay would hand the client two finish chunks and fail the
+ * stream-order check. The first finish_reason a stream carries passes
+ * through; every later one is set to null — its usage and content still
+ * flow, so the client loses nothing but the duplicate stop.
  */
-export function frameWithModel(frame: string, model: string): string {
+export function frameWithModel(frame: string, model: string, finishState?: { seen: boolean }): string {
   const lines = frame.split('\n').map((line) => {
     const trimmed = line.trim();
     if (!trimmed.startsWith('data:')) return line;
@@ -338,7 +346,21 @@ export function frameWithModel(frame: string, model: string): string {
     if (payload === '' || payload === '[DONE]') return line;
     try {
       const chunk: unknown = JSON.parse(payload);
-      if (isRecord(chunk)) return `data: ${JSON.stringify({ ...chunk, model })}`;
+      if (isRecord(chunk)) {
+        const out: Json = { ...chunk, model };
+        if (finishState !== undefined && Array.isArray(out.choices)) {
+          out.choices = out.choices.map((choice) => {
+            if (!isRecord(choice)) return choice;
+            const reason = choice.finish_reason;
+            if (typeof reason === 'string' && reason !== '') {
+              if (finishState.seen) return { ...choice, finish_reason: null };
+              finishState.seen = true;
+            }
+            return choice;
+          });
+        }
+        return `data: ${JSON.stringify(out)}`;
+      }
     } catch {
       // Not JSON: relay the line as it came.
     }
@@ -349,20 +371,23 @@ export function frameWithModel(frame: string, model: string): string {
 
 /**
  * A Chat Completions SSE stream as it came, frame by frame, every data
- * payload's `model` the id the entry dialled. If the gateway's stream ends
- * without `[DONE]`, one is appended: the client requires the stream to end
- * with it exactly once.
+ * payload's `model` the id the entry dialled, and exactly one finish chunk:
+ * the gateway repeats `finish_reason` on its usage chunk, so the relay
+ * nulls every finish_reason after the first (see frameWithModel). If the
+ * gateway's stream ends without `[DONE]`, one is appended: the client
+ * requires the stream to end with it exactly once.
  */
 export async function* openAIStreamWithModel(
   upstream: ReadableStream<Uint8Array>,
   model: string,
 ): AsyncGenerator<string> {
   let sawDone = false;
+  const finishState = { seen: false };
   for await (const frame of sseFrames(upstream)) {
     if (frame.trim().split('\n').some((line) => line.trim() === 'data: [DONE]')) {
       sawDone = true;
     }
-    yield frameWithModel(frame, model);
+    yield frameWithModel(frame, model, finishState);
   }
   if (!sawDone) yield 'data: [DONE]\n\n';
 }
