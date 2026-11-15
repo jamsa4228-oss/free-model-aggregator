@@ -1,8 +1,16 @@
+[![make.fun · free-model-aggregator-02](https://make.fun/badge/free-model-aggregator-02.svg)](https://make.fun/bounty/free-model-aggregator-02?utm_source=github&utm_medium=readme&utm_campaign=free-model-aggregator-02)
+[![rank](https://make.fun/badge/free-model-aggregator-02/jamsa4228-oss/free-model-aggregator/rank.svg)](https://make.fun/bounty/free-model-aggregator-02/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=free-model-aggregator-02)
+[![reward](https://make.fun/badge/free-model-aggregator-02/jamsa4228-oss/free-model-aggregator/reward.svg)](https://make.fun/bounty/free-model-aggregator-02?utm_source=github&utm_medium=readme&utm_campaign=free-model-aggregator-02)
+
 # free-model-aggregator-02 — entry
 
 One server that aggregates the 14 free OpenRouter models into a single
 endpoint, speaking both the OpenAI wire (`POST /v1/chat/completions`) and
 the Anthropic wire (`POST /v1/messages`), JSON and streaming.
+
+Built for the [make.fun bounty](https://make.fun/bounty/free-model-aggregator-02)
+"The best live free-model aggregator" ($500 in USDC).
+Referral: https://make.fun/r/32fhk82g
 
 ## Run
 
